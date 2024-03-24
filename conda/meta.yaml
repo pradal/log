@@ -1,0 +1,49 @@
+{% set data = load_setup_py_data() %}
+
+package:
+  name: data_utility.log
+  version: {{ data.get('version') }}
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  preserve_egg_dir: True
+  number: 0
+  script: {{PYTHON}} setup.py install #--single-version-externally-managed --record=record.txt
+
+requirements:
+  build:
+    - python {{PY_VER}}
+    - setuptools
+  run:
+    - python
+    - xarray
+    - netcdf4
+    - pandas
+    - numpy
+    - pyvista
+    - imageio
+    - imageio-ffmpeg
+    - matplotlib
+    - tkinter
+    - gudhi
+    - openalea.plantgl
+    - openalea.mtg
+
+test:
+  requires:
+    - pytest
+  imports:
+    - data_utility.log
+  source_files:
+    - test/**
+  commands:
+    - cd test
+    - pytest -v --ignore=test_aml.py  --ignore=test_stat.py
+
+about:
+  home: {{ data.get('url') }}
+  license: CeCILL-C
+  summary: {{ data.get('description') }}

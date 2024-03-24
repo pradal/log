@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 import openalea.plantgl.all as pgl
 from openalea.mtg.traversal import pre_order, post_order
-from data_utility.log.visualize import plot_mtg, plot_mtg_alt
+from log.visualize import plot_mtg, plot_mtg_alt
 
 
 class Logger:
