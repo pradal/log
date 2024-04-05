@@ -73,7 +73,7 @@ class Logger:
                 self.output_variables.update({f.name:f.metadata for f in fields(model) if f.name in model.state_variables + available_inputs})
 
         if self.recording_sums:
-            self.plant_scale_properties = pd.DataFrame(columns=self.summable_output_variables + self.meanable_output_variables)
+            self.plant_scale_properties = pd.DataFrame(columns=self.summable_output_variables + self.meanable_output_variables + self.plant_scale_state)
 
         if self.recording_raw:
             self.log_xarray = []
@@ -170,7 +170,7 @@ class Logger:
                 if var in self.props["soil"].keys():
                     step_plant_scale.update({var:np.mean(self.props["soil"][var])})
 
-        step_sum = pd.DataFrame(step_plant_scale, columns=self.summable_output_variables + self.meanable_output_variables, 
+        step_sum = pd.DataFrame(step_plant_scale, columns=self.summable_output_variables + self.meanable_output_variables + self.plant_scale_state, 
                                 index=[self.simulation_time_in_hours])
         self.plant_scale_properties = pd.concat([self.plant_scale_properties, step_sum])
 
