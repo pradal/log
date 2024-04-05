@@ -23,8 +23,17 @@ class Logger:
                  recording_sums=True, recording_raw=True, recording_mtg=True, recording_images=True, recording_performance=True,
                  plotted_property="hexose_exudation",
                  echo=True):
-        self.g = model_instance.g
-        self.props = self.g.properties()
+        self.data_structures = model_instance.data_structures
+        self.props = {}
+        for name, data_structure in self.data_structures.items():
+            # If we have to extract properties from a mtg instance
+            if str(type(data_structure)) == "<class 'openalea.mtg.mtg.MTG'>":
+                self.props[name] = data_structure.properties()
+            # Elif a dict of properties have already been provided
+            elif str(type(data_structure)) == "<class 'dict'>":
+                self.props[name] = data_structure
+            else:
+                print("[WARNING] Unknown data structure has been passed to logger")
         
         self.models = model_instance.models
         self.outputs_dirpath = outputs_dirpath
@@ -32,6 +41,7 @@ class Logger:
         self.scenario = scenario
         self.summable_output_variables = []
         self.meanable_output_variables = []
+        self.plant_scale_state = []
         self.time_step_in_hours = time_step_in_hours
         self.logging_period_in_hours = logging_period_in_hours
         self.recording_sums = recording_sums
@@ -58,6 +68,7 @@ class Logger:
             for model in self.models:
                 self.summable_output_variables += model.extensive_variables
                 self.meanable_output_variables += model.intensive_variables
+                self.plant_scale_state += model.plant_scale_state
                 available_inputs = [i for i in model.inputs if i in self.props.keys()] # To prevent getting inputs that are not proveided neither from another model nor mtg
                 self.output_variables.update({f.name:f.metadata for f in fields(model) if f.name in model.state_variables + available_inputs})
 
@@ -130,15 +141,35 @@ class Logger:
         self.simulation_performance = pd.concat([self.simulation_performance, step_elapsed])
 
     def recording_summed_MTG_properties_to_csv(self):
+        # We init the dict that will capture all recorded properties of the current time-step
         step_plant_scale = {}
-        for var in self.summable_output_variables:
-            step_plant_scale.update({var:sum(self.props[var].values())})
-        for var in self.meanable_output_variables:
-            emerged_only_list = [v for v in self.props[var].values() if v > 0]
-            if len(emerged_only_list) > 0:
-                step_plant_scale.update({var:np.mean(emerged_only_list)})
-            else:
-                step_plant_scale.update({var:None})
+        # Fist we log from both mtgs:
+        for compartment in self.props.keys():
+            if compartment != "soil":
+                prop = self.props[compartment]
+                for var in self.summable_output_variables:
+                    if var in prop.keys():
+                        step_plant_scale.update({var:sum(prop[var].values())})
+                for var in self.meanable_output_variables:
+                    if var in prop.keys():
+                        emerged_only_list = [v for v in prop[var].values() if v != 0]
+                        if len(emerged_only_list) > 0:
+                            step_plant_scale.update({var:np.mean(emerged_only_list)})
+                        else:
+                            step_plant_scale.update({var:None})
+                for var in self.plant_scale_state:
+                    if var in prop.keys():
+                        step_plant_scale.update({var:sum(prop[var].values())})
+
+        # Then we log from the soil grid (if available)
+        if "soil" in self.props.keys():
+            for var in self.summable_output_variables:
+                if var in self.props["soil"].keys():
+                    step_plant_scale.update({var:np.mean(self.props["soil"][var])})
+            for var in self.meanable_output_variables:
+                if var in self.props["soil"].keys():
+                    step_plant_scale.update({var:np.mean(self.props["soil"][var])})
+
         step_sum = pd.DataFrame(step_plant_scale, columns=self.summable_output_variables + self.meanable_output_variables, 
                                 index=[self.simulation_time_in_hours])
         self.plant_scale_properties = pd.concat([self.plant_scale_properties, step_sum])
