@@ -28,7 +28,12 @@ class Logger:
         for name, data_structure in self.data_structures.items():
             # If we have to extract properties from a mtg instance
             if str(type(data_structure)) == "<class 'openalea.mtg.mtg.MTG'>":
-                self.props[name] = data_structure.properties()
+                if name == "root":
+                    self.props[name] = data_structure.properties()
+                elif name == "shoot":
+                    self.props[name] = data_structure.get_vertex_property(2)["roots"]
+                else:
+                    print("ERROR, unknown MTG")
             # Elif a dict of properties have already been provided
             elif str(type(data_structure)) == "<class 'dict'>":
                 self.props[name] = data_structure
@@ -47,6 +52,8 @@ class Logger:
         self.recording_sums = recording_sums
         self.recording_raw = recording_raw
         self.recording_mtg = recording_mtg
+        if "root" not in self.data_structures.keys():
+            recording_images = False
         self.recording_images = recording_images
         self.plotted_property = plotted_property
         self.recording_performance = recording_performance
@@ -69,7 +76,7 @@ class Logger:
                 self.summable_output_variables += model.extensive_variables
                 self.meanable_output_variables += model.intensive_variables
                 self.plant_scale_state += model.plant_scale_state
-                available_inputs = [i for i in model.inputs if i in self.props.keys()] # To prevent getting inputs that are not proveided neither from another model nor mtg
+                available_inputs = [i for i in model.inputs if i in self.props.keys()] # To prevent getting inputs that are not provided neither from another model nor mtg
                 self.output_variables.update({f.name:f.metadata for f in fields(model) if f.name in model.state_variables + available_inputs})
 
         if self.recording_sums:
@@ -90,8 +97,8 @@ class Logger:
             framerate = 30
             self.plotter.open_movie(os.path.join(self.root_images_dirpath, "root_movie.mp4"), framerate)
             self.plotter.show(interactive_update=True)
-            plot_mtg(self.g, prop_cmap=self.plotted_property)
-            root_system_mesh = plot_mtg_alt(self.g, cmap_property=self.plotted_property)
+            plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
+            root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
             self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False)
             self.plot_text = self.plotter.add_text(f" t = 0 h", position="upper_left")
 
@@ -143,32 +150,40 @@ class Logger:
     def recording_summed_MTG_properties_to_csv(self):
         # We init the dict that will capture all recorded properties of the current time-step
         step_plant_scale = {}
+
         # Fist we log from both mtgs:
         for compartment in self.props.keys():
-            if compartment != "soil":
+            if compartment == "root":
+                prop = self.props[compartment]
+                emerged_vids = [k for k, v in prop["struct_mass"].items() if v > 0]
+                for var in self.summable_output_variables:
+                    if var in prop.keys():
+                        step_plant_scale.update({var:sum([prop[var][v] for v in emerged_vids])})
+                for var in self.meanable_output_variables:
+                    if var in prop.keys():
+                        if len(emerged_vids) > 0:
+                            step_plant_scale.update({var: np.mean([prop[var][v] for v in emerged_vids])})
+                        else:
+                            step_plant_scale.update({var: None})
+                for var in self.plant_scale_state:
+                    if var in prop.keys():
+                        step_plant_scale.update({var: sum(prop[var].values())})
+
+            elif compartment == "shoot":
                 prop = self.props[compartment]
                 for var in self.summable_output_variables:
                     if var in prop.keys():
-                        step_plant_scale.update({var:sum(prop[var].values())})
-                for var in self.meanable_output_variables:
-                    if var in prop.keys():
-                        emerged_only_list = [v for v in prop[var].values() if v != 0]
-                        if len(emerged_only_list) > 0:
-                            step_plant_scale.update({var:np.mean(emerged_only_list)})
-                        else:
-                            step_plant_scale.update({var:None})
-                for var in self.plant_scale_state:
-                    if var in prop.keys():
-                        step_plant_scale.update({var:sum(prop[var].values())})
+                        step_plant_scale.update({var: prop[var]})
 
-        # Then we log from the soil grid (if available)
-        if "soil" in self.props.keys():
-            for var in self.summable_output_variables:
-                if var in self.props["soil"].keys():
-                    step_plant_scale.update({var:np.mean(self.props["soil"][var])})
-            for var in self.meanable_output_variables:
-                if var in self.props["soil"].keys():
-                    step_plant_scale.update({var:np.mean(self.props["soil"][var])})
+            # Then we log from the soil grid (if available)
+            elif compartment == "soil":
+                for var in self.summable_output_variables:
+                    if var in self.props["soil"].keys():
+                        step_plant_scale.update({var: np.sum(self.props["soil"][var])})
+
+                for var in self.meanable_output_variables:
+                    if var in self.props["soil"].keys():
+                        step_plant_scale.update({var: np.mean(self.props["soil"][var])})
 
         step_sum = pd.DataFrame(step_plant_scale, columns=self.summable_output_variables + self.meanable_output_variables + self.plant_scale_state, 
                                 index=[self.simulation_time_in_hours])
@@ -228,8 +243,8 @@ class Logger:
     def recording_images_from_plantgl(self):
         # TODO : step back according to max(||x2-x1||, ||y2-y1||, ||z2-z1||)
         #Updates positions with turtle
-        plot_mtg(self.g, prop_cmap=self.plotted_property)
-        root_system_mesh = plot_mtg_alt(self.g, cmap_property=self.plotted_property)
+        plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
+        root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
 
         self.plotter.remove_actor(self.current_mesh)
         self.plotter.remove_actor(self.plot_text)
