@@ -47,6 +47,7 @@ class Logger:
         self.summable_output_variables = []
         self.meanable_output_variables = []
         self.plant_scale_state = []
+        self.units_for_outputs = {}
         self.time_step_in_hours = time_step_in_hours
         self.logging_period_in_hours = logging_period_in_hours
         self.recording_sums = recording_sums
@@ -78,15 +79,24 @@ class Logger:
                 self.plant_scale_state += model.plant_scale_state
                 available_inputs = [i for i in model.inputs if i in self.props.keys()] # To prevent getting inputs that are not provided neither from another model nor mtg
                 self.output_variables.update({f.name:f.metadata for f in fields(model) if f.name in model.state_variables + available_inputs})
+                self.units_for_outputs.update({f.name: f.metadata["unit"] for f in fields(model) if f.name in self.summable_output_variables + self.meanable_output_variables + self.plant_scale_state})
 
         if self.recording_sums:
             self.plant_scale_properties = pd.DataFrame(columns=self.summable_output_variables + self.meanable_output_variables + self.plant_scale_state)
+            unit_row = pd.DataFrame(self.units_for_outputs,
+                                    columns=self.summable_output_variables + self.meanable_output_variables + self.plant_scale_state,
+                                    index=["unit"])
+            self.plant_scale_properties = pd.concat([self.plant_scale_properties, unit_row])
 
         if self.recording_raw:
             self.log_xarray = []
         
         if self.recording_performance:
             self.simulation_performance = pd.DataFrame(columns=["time_step_duration"])
+            units = pd.DataFrame({"time_step_duration": "s"},
+                                        columns=["time_step_duration"],
+                                        index=["unit"])
+            self.simulation_performance = pd.concat([self.simulation_performance, units])
 
         if recording_images:
             self.plotter = pv.Plotter(off_screen=not self.echo, window_size=[1900, 1080], lighting="three lights")
@@ -156,6 +166,7 @@ class Logger:
             if compartment == "root":
                 prop = self.props[compartment]
                 emerged_vids = [k for k, v in prop["struct_mass"].items() if v > 0]
+                emerged_vids.remove(1)
                 for var in self.summable_output_variables:
                     if var in prop.keys():
                         step_plant_scale.update({var:sum([prop[var][v] for v in emerged_vids])})
