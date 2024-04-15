@@ -494,6 +494,16 @@ def plot_xr(datasets, vertice=[], summing=0, selection=[], supplementary_legend=
     # Finally show figure
     root.update()
 
+def lines_from_points(points):
+    """Given an array of points, make a line set"""
+    poly = pv.PolyData()
+    poly.points = points
+    cells = np.full((len(points) - 1, 3), 2, dtype=np.int_)
+    cells[:, 1] = np.arange(0, len(points) - 1, dtype=np.int_)
+    cells[:, 2] = np.arange(1, len(points), dtype=np.int_)
+    poly.lines = cells
+    return poly
+
 def plot_mtg_alt(g, cmap_property):
     props = g.properties()
     root_gen = g.component_roots_at_scale_iter(g.root, scale=1)
@@ -512,11 +522,11 @@ def plot_mtg_alt(g, cmap_property):
                 root = [grandparent, parent] + root
 
             points = np.array([[props["x2"][v], props["y2"][v], props["z2"][v]] for v in root])
-            spline = pv.Spline(points)
-            spline[cmap_property] = [props[cmap_property][v] for v in root]
+            line = lines_from_points(points)
+            line[cmap_property] = [props[cmap_property][v] for v in root]
             # Adjust radius of each element
-            spline["radius"] = [props["radius"][v] for v in root]
-            tubes += [spline.tube(scalars="radius", absolute=True)]
+            line["radius"] = [props["radius"][v] for v in root]
+            tubes += [line.tube(scalars="radius", absolute=True)]
     
     root_system = pv.MultiBlock(tubes)
     return root_system

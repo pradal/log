@@ -252,25 +252,36 @@ class Logger:
 
 
     def recording_images_from_plantgl(self):
-        # TODO : step back according to max(||x2-x1||, ||y2-y1||, ||z2-z1||)
-        #Updates positions with turtle
-        plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
-        root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
 
-        self.plotter.remove_actor(self.current_mesh)
-        self.plotter.remove_actor(self.plot_text)
-        self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False, specular=1.)
-        self.plot_text = self.plotter.add_text(f" t = {self.simulation_time_in_hours} h", position="upper_left")
-        self.plotter.update()
-        self.plotter.write_frame()
-        # Usefull to set new camera angle
-        #print(self.plotter.camera_position)
+        if "root" in self.data_structures.keys():
+            # TODO : step back according to max(||x2-x1||, ||y2-y1||, ||z2-z1||)
+            #Updates positions with turtle
+            plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
+            root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
 
-        #pgl.Viewer.display()
-        # If needed, we wait for a few seconds so that the graph is well positioned:
-        #time.sleep(0.1)
-        #image_name = os.path.join(self.root_images_dirpath, f'root_{self.simulation_time_in_hours}.png')
-        #pgl.Viewer.saveSnapshot(image_name)
+            self.plotter.remove_actor(self.current_mesh)
+            self.plotter.remove_actor(self.plot_text)
+            self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False, specular=1.)
+            self.plot_text = self.plotter.add_text(f" t = {self.simulation_time_in_hours} h", position="upper_left")
+            self.plotter.update()
+            self.plotter.write_frame()
+            # Usefull to set new camera angle
+            #print(self.plotter.camera_position)
+
+            #pgl.Viewer.display()
+            # If needed, we wait for a few seconds so that the graph is well positioned:
+            #time.sleep(0.1)
+            #image_name = os.path.join(self.root_images_dirpath, f'root_{self.simulation_time_in_hours}.png')
+            #pgl.Viewer.saveSnapshot(image_name)
+
+        # if "shoot" in self.data_structures.keys():
+        #     geometries = self.data_structures["shoot"].property("geometry")
+        #     for vid, mesh in geometries.items():
+        #         self.plotter.add_mesh(mesh)
+        #         shape = pgl.Shape(mesh)
+        #         shape.id = vid
+        #         scene.add(shape)
+
 
     def write_to_disk(self, xarray_list):
         interstitial_dataset = xr.concat(xarray_list, dim="t")
