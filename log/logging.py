@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 import openalea.plantgl.all as pgl
 from openalea.mtg.traversal import pre_order, post_order
-from log.visualize import plot_mtg, plot_mtg_alt
+from log.visualize import plot_mtg, plot_mtg_alt, soil_voxels_mesh
 
 
 class Logger:
@@ -21,7 +21,7 @@ class Logger:
                  output_variables={}, scenario={"default":1}, time_step_in_hours=1, 
                  logging_period_in_hours=1, 
                  recording_sums=True, recording_raw=True, recording_mtg=True, recording_images=True, recording_performance=True,
-                 plotted_property="hexose_exudation",
+                 plotted_property="hexose_exudation", show_soil=True,
                  echo=True):
         self.data_structures = model_instance.data_structures
         self.props = {}
@@ -56,6 +56,7 @@ class Logger:
         if "root" not in self.data_structures.keys():
             recording_images = False
         self.recording_images = recording_images
+        self.show_soil = show_soil
         self.plotted_property = plotted_property
         self.recording_performance = recording_performance
         self.echo = echo
@@ -111,6 +112,10 @@ class Logger:
             root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
             self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False)
             self.plot_text = self.plotter.add_text(f" t = 0 h", position="upper_left")
+            if "soil" in self.data_structures.keys() and self.show_soil:
+                soil_grid = soil_voxels_mesh(self.data_structures["root"], self.data_structures["soil"],
+                                             cmap_property="C_hexose_soil")
+                self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="jet", show_edges=False, specular=1., opacity=0.1)
 
         self.start_time = timeit.default_timer()
         self.previous_step_start_time = self.start_time
@@ -134,7 +139,7 @@ class Logger:
         self.current_step_start_time = self.elapsed_time
         
         if self.echo:
-            print(f"[RUNNING] {self.simulation_time_in_hours} hours | step took {round(self.current_step_start_time - self.previous_step_start_time, 1)} s | {int(self.elapsed_time)} s of simulation until now", end='\r', flush=True)
+            print(f"[RUNNING] {self.simulation_time_in_hours} hours | step took {round(self.current_step_start_time - self.previous_step_start_time, 1)} s | {int(self.elapsed_time)} s of simulation until now", end='\r')
 
         if self.recording_performance:
             self.recording_step_performance()
@@ -250,19 +255,21 @@ class Logger:
         with open(os.path.join(self.MTG_files_dirpath, f'root_{self.simulation_time_in_hours}.pckl'), "wb") as f:
             pickle.dump(self.g, f)
 
-
     def recording_images_from_plantgl(self):
-
         if "root" in self.data_structures.keys():
             # TODO : step back according to max(||x2-x1||, ||y2-y1||, ||z2-z1||)
             #Updates positions with turtle
             plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
             root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
-
             self.plotter.remove_actor(self.current_mesh)
             self.plotter.remove_actor(self.plot_text)
             self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False, specular=1.)
             self.plot_text = self.plotter.add_text(f" t = {self.simulation_time_in_hours} h", position="upper_left")
+            if "soil" in self.data_structures.keys() and self.show_soil:
+                soil_grid = soil_voxels_mesh(self.data_structures["root"], self.data_structures["soil"],
+                                             cmap_property="C_hexose_soil")
+                self.plotter.remove_actor(self.soil_grid_in_scene)
+                self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="jet", show_edges=False, specular=1., opacity=0.1)
             self.plotter.update()
             self.plotter.write_frame()
             # Usefull to set new camera angle
@@ -281,6 +288,8 @@ class Logger:
         #         shape = pgl.Shape(mesh)
         #         shape.id = vid
         #         scene.add(shape)
+
+
 
 
     def write_to_disk(self, xarray_list):

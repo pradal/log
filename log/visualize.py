@@ -494,6 +494,7 @@ def plot_xr(datasets, vertice=[], summing=0, selection=[], supplementary_legend=
     # Finally show figure
     root.update()
 
+
 def lines_from_points(points):
     """Given an array of points, make a line set"""
     poly = pv.PolyData()
@@ -503,6 +504,7 @@ def lines_from_points(points):
     cells[:, 2] = np.arange(1, len(points), dtype=np.int_)
     poly.lines = cells
     return poly
+
 
 def plot_mtg_alt(g, cmap_property):
     props = g.properties()
@@ -523,6 +525,7 @@ def plot_mtg_alt(g, cmap_property):
 
             points = np.array([[props["x2"][v], props["y2"][v], props["z2"][v]] for v in root])
             line = lines_from_points(points)
+            # TODO : do it twice to display root hairs
             line[cmap_property] = [props[cmap_property][v] for v in root]
             # Adjust radius of each element
             line["radius"] = [props["radius"][v] for v in root]
@@ -530,6 +533,30 @@ def plot_mtg_alt(g, cmap_property):
     
     root_system = pv.MultiBlock(tubes)
     return root_system
+
+
+def soil_voxels_mesh(g, voxels, cmap_property):
+    intercepted_neighbors = [v for v in g.property("voxel_neighbor").values() if v != None]
+    voxel_mesh_list = []
+    already_plotted = []
+    for coord in intercepted_neighbors:
+        if coord not in already_plotted:
+            already_plotted += [coord]
+            vy, vz, vx = coord
+            voxel = pv.Box(bounds=(
+                voxels["x1"][vy][vz][vx],
+                voxels["x2"][vy][vz][vx],
+                voxels["y1"][vy][vz][vx],
+                voxels["y2"][vy][vz][vx],
+                -voxels["z1"][vy][vz][vx],
+                -voxels["z2"][vy][vz][vx]
+            ))
+            voxel[cmap_property] = [voxels[cmap_property][vy][vz][vx]]*6
+
+            voxel_mesh_list += [voxel]
+
+    soil_grid = pv.MultiBlock(voxel_mesh_list)
+    return soil_grid
 
 
     
