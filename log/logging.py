@@ -109,14 +109,17 @@ class Logger:
             framerate = 15
             self.plotter.open_movie(os.path.join(self.root_images_dirpath, "root_movie.mp4"), framerate)
             self.plotter.show(interactive_update=True)
+
+            # NOTE : Not necessary since voxels provide the scale information :
             # First plot a 1 cm scale bar
-            self.plotter.add_mesh(pv.Line((0, 0.08, 0), (0, 0.09, 0)), color='k', line_width=7)
-            self.plotter.add_text("1 cm", position="upper_right")
+            # self.plotter.add_mesh(pv.Line((0, 0.08, 0), (0, 0.09, 0)), color='k', line_width=7)
+            # self.plotter.add_text("1 cm", position="upper_right")
+
             # Then add initial states of plotted compartments
             plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
             root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
             self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False)
-            self.plot_text = self.plotter.add_text(f" t = 0 h", position="upper_left")
+            self.plot_text = self.plotter.add_text(f"Simulation starting...", position="upper_left")
             if "soil" in self.data_structures.keys() and self.show_soil:
                 soil_grid = soil_voxels_mesh(self.data_structures["root"], self.data_structures["soil"],
                                              cmap_property="C_hexose_soil")
@@ -271,8 +274,9 @@ class Logger:
             root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
             self.plotter.remove_actor(self.current_mesh)
             self.plotter.remove_actor(self.plot_text)
-            self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False, specular=1.)
-            self.plot_text = self.plotter.add_text(f" t = {self.simulation_time_in_hours} h", position="upper_left")
+            self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False, specular=1., log_scale=True)
+            # TODO : Temporary, just because the meteo file begins at PAR peak
+            self.plot_text = self.plotter.add_text(f" day {int((self.simulation_time_in_hours + 12) / 24)} : {(self.simulation_time_in_hours + 12) % 24} h", position="upper_left")
             if "soil" in self.data_structures.keys() and self.show_soil:
                 soil_grid = soil_voxels_mesh(self.data_structures["root"], self.data_structures["soil"],
                                              cmap_property="C_hexose_soil")
