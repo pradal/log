@@ -4,6 +4,7 @@ import numpy as np
 from openalea.mtg.plantframe import color
 from openalea.mtg import turtle as turt
 import openalea.plantgl.all as pgl
+import trimesh
 import pyvista as pv
 
 from math import cos, sin, floor
@@ -557,6 +558,21 @@ def soil_voxels_mesh(g, voxels, cmap_property):
 
     soil_grid = pv.MultiBlock(voxel_mesh_list)
     return soil_grid
+
+
+def shoot_plantgl_to_mesh(g, cmap_property="", scale=0.3):
+    geometries = g.property("geometry")
+    shoot_mesh_list = []
+    for vid, geom in geometries.items():
+        t = pgl.Tesselator()
+        geom.apply(t)
+        mesh = t.discretization
+        tmesh = trimesh.Trimesh(mesh.pointList, mesh.indexList)
+        shoot_mesh_list += [pv.wrap(tmesh).scale([scale, scale, scale])]
+
+    shoot_mesh = pv.MultiBlock(shoot_mesh_list)
+
+    return shoot_mesh
 
 
     

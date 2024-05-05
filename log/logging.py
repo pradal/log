@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 import openalea.plantgl.all as pgl
 from openalea.mtg.traversal import pre_order, post_order
-from log.visualize import plot_mtg, plot_mtg_alt, soil_voxels_mesh
+from log.visualize import plot_mtg, plot_mtg_alt, soil_voxels_mesh, shoot_plantgl_to_mesh
 
 
 class Logger:
@@ -23,6 +23,7 @@ class Logger:
                  recording_sums=True, recording_raw=True, recording_mtg=True, recording_images=True, recording_performance=True,
                  plotted_property="hexose_exudation", show_soil=True,
                  echo=True):
+
         self.data_structures = model_instance.data_structures
         self.props = {}
         for name, data_structure in self.data_structures.items():
@@ -79,7 +80,7 @@ class Logger:
                 self.meanable_output_variables += model.intensive_variables
                 self.plant_scale_state += model.plant_scale_state
                 available_inputs = [i for i in model.inputs if i in self.props.keys()] # To prevent getting inputs that are not provided neither from another model nor mtg
-                self.output_variables.update({f.name:f.metadata for f in fields(model) if f.name in model.state_variables + available_inputs})
+                self.output_variables.update({f.name: f.metadata for f in fields(model) if f.name in model.state_variables + available_inputs})
                 self.units_for_outputs.update({f.name: f.metadata["unit"] for f in fields(model) if f.name in self.summable_output_variables + self.meanable_output_variables + self.plant_scale_state})
 
         if self.recording_sums:
@@ -100,14 +101,18 @@ class Logger:
             self.simulation_performance = pd.concat([self.simulation_performance, units])
 
         if recording_images:
-            self.plotter = pv.Plotter(off_screen=not self.echo, window_size=[1900, 1080], lighting="three lights")
+            self.plotter = pv.Plotter(off_screen=not self.echo, window_size=[1080, 1900], lighting="three lights")
             self.plotter.set_background("brown")
-            self.plotter.camera_position = [(0.2771029327675725, 0.26559962985945457, 0.22821718563975485),
-                                            (0.0475656802374161, 0.03795701550406494, -0.09353044576347432),
-                                            (-0.5353537107754003, -0.4607303882419462, 0.7079010620909072)]
-            framerate = 30
+            self.plotter.camera_position = [(0.5898493617465133, 0.16753767713142573, -0.15589754972162514),
+                                             (0.05803968951919419, 0.020133560539500505, -0.15067328694744955),
+                                             (0.01686321888881693, -0.025414423639937334, 0.9995347612363252)]
+            framerate = 15
             self.plotter.open_movie(os.path.join(self.root_images_dirpath, "root_movie.mp4"), framerate)
             self.plotter.show(interactive_update=True)
+            # First plot a 1 cm scale bar
+            self.plotter.add_mesh(pv.Line((0, 0.08, 0), (0, 0.09, 0)), color='k', line_width=7)
+            self.plotter.add_text("1 cm", position="upper_right")
+            # Then add initial states of plotted compartments
             plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
             root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
             self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False)
@@ -115,7 +120,10 @@ class Logger:
             if "soil" in self.data_structures.keys() and self.show_soil:
                 soil_grid = soil_voxels_mesh(self.data_structures["root"], self.data_structures["soil"],
                                              cmap_property="C_hexose_soil")
-                self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="jet", show_edges=False, specular=1., opacity=0.1)
+                self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="hot", show_edges=False, specular=1., opacity=0.1)
+            if "shoot" in self.data_structures.keys():
+                shoot_mesh = shoot_plantgl_to_mesh(self.data_structures["shoot"])
+                self.shoot_current_mesh = self.plotter.add_mesh(shoot_mesh, color="green", show_edges=False, specular=1.)
 
         self.start_time = timeit.default_timer()
         self.previous_step_start_time = self.start_time
@@ -139,7 +147,7 @@ class Logger:
         self.current_step_start_time = self.elapsed_time
         
         if self.echo:
-            print(f"[RUNNING] {self.simulation_time_in_hours} hours | step took {round(self.current_step_start_time - self.previous_step_start_time, 1)} s | {int(self.elapsed_time)} s of simulation until now", end='\r')
+            sys.stdout.write(f"\r[RUNNING] {self.simulation_time_in_hours} hours | step took {round(self.current_step_start_time - self.previous_step_start_time, 1)} s | {time.strftime('%H:%M:%S', time.gmtime(int(self.elapsed_time)))} since simulation started")
 
         if self.recording_performance:
             self.recording_step_performance()
@@ -221,7 +229,7 @@ class Logger:
                        time=0):
         # convert dict to dataframe with index corresponding to coordinates in topology space
         # (not just x, y, z, t thanks to MTG structure)
-        props_dict = {k:v for k, v in self.props.items() if type(v)==dict}
+        props_dict = {k:v for k, v in self.props["root"].items() if type(v)==dict}
         props_df = pd.DataFrame.from_dict(props_dict)
         props_df["vid"] = props_df.index
         props_df["t"] = [time for k in range(props_df.shape[0])]
@@ -253,7 +261,7 @@ class Logger:
     
     def recording_mtg_files(self):
         with open(os.path.join(self.MTG_files_dirpath, f'root_{self.simulation_time_in_hours}.pckl'), "wb") as f:
-            pickle.dump(self.g, f)
+            pickle.dump(self.data_structures["root"], f)
 
     def recording_images_from_plantgl(self):
         if "root" in self.data_structures.keys():
@@ -269,9 +277,7 @@ class Logger:
                 soil_grid = soil_voxels_mesh(self.data_structures["root"], self.data_structures["soil"],
                                              cmap_property="C_hexose_soil")
                 self.plotter.remove_actor(self.soil_grid_in_scene)
-                self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="jet", show_edges=False, specular=1., opacity=0.1)
-            self.plotter.update()
-            self.plotter.write_frame()
+                self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="hot", show_edges=False, specular=1., opacity=0.1)
             # Usefull to set new camera angle
             #print(self.plotter.camera_position)
 
@@ -281,13 +287,13 @@ class Logger:
             #image_name = os.path.join(self.root_images_dirpath, f'root_{self.simulation_time_in_hours}.png')
             #pgl.Viewer.saveSnapshot(image_name)
 
-        # if "shoot" in self.data_structures.keys():
-        #     geometries = self.data_structures["shoot"].property("geometry")
-        #     for vid, mesh in geometries.items():
-        #         self.plotter.add_mesh(mesh)
-        #         shape = pgl.Shape(mesh)
-        #         shape.id = vid
-        #         scene.add(shape)
+        if "shoot" in self.data_structures.keys():
+            self.plotter.remove_actor(self.shoot_current_mesh)
+            shoot_mesh = shoot_plantgl_to_mesh(self.data_structures["shoot"])
+            self.shoot_current_mesh = self.plotter.add_mesh(shoot_mesh, color="lightgreen", show_edges=False, specular=1.)
+
+        self.plotter.update()
+        self.plotter.write_frame()
 
 
 
