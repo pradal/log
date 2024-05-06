@@ -21,6 +21,7 @@ class Logger:
                  output_variables={}, scenario={"default":1}, time_step_in_hours=1, 
                  logging_period_in_hours=1, 
                  recording_sums=True, recording_raw=True, recording_mtg=True, recording_images=True, recording_performance=True,
+                 recording_shoot=True,
                  plotted_property="hexose_exudation", show_soil=True,
                  echo=True):
 
@@ -57,6 +58,9 @@ class Logger:
         self.recording_sums = recording_sums
         self.recording_raw = recording_raw
         self.recording_mtg = recording_mtg
+        self.recording_shoot = recording_shoot
+        if self.recording_shoot:
+            self.shoot = model_instance.shoot
         if "root" not in self.data_structures.keys():
             recording_images = False
         self.recording_images = recording_images
@@ -70,12 +74,14 @@ class Logger:
         self.MTG_properties_dirpath = os.path.join(self.outputs_dirpath, "MTG_properties")
         self.MTG_properties_summed_dirpath = os.path.join(self.outputs_dirpath, "MTG_properties/MTG_properties_summed")
         self.MTG_properties_raw_dirpath = os.path.join(self.outputs_dirpath, "MTG_properties/MTG_properties_raw")
+        self.shoot_properties_dirpath = os.path.join(self.outputs_dirpath, "MTG_properties/shoot_properties")
         self.create_or_empty_directory(self.outputs_dirpath)
         self.create_or_empty_directory(self.root_images_dirpath)
         self.create_or_empty_directory(self.MTG_files_dirpath)
         self.create_or_empty_directory(self.MTG_properties_dirpath)
         self.create_or_empty_directory(self.MTG_properties_summed_dirpath)
         self.create_or_empty_directory(self.MTG_properties_raw_dirpath)
+        self.create_or_empty_directory(self.shoot_properties_dirpath)
 
         if self.output_variables == {}:
             for model in self.models:
@@ -104,7 +110,8 @@ class Logger:
             self.simulation_performance = pd.concat([self.simulation_performance, units])
 
         if recording_images:
-            self.plotter = pv.Plotter(off_screen=not self.echo, window_size=[1080, 1900], lighting="three lights")
+            sizes = {"landscape": [1920, 1080], "portrait": [1080, 1920], "square": [1080, 1080], "small_height": [960, 1280]}
+            self.plotter = pv.Plotter(off_screen=not self.echo, window_size=sizes["portrait"], lighting="three lights")
             self.plotter.set_background("brown")
             self.plotter.camera_position = [(0.4581924448845271, 0.12144416998857457, 0.12454786289421049),
                                              (-0.017397782864733282, -0.012174494144901625, -0.121494373010319),
@@ -400,7 +407,24 @@ class Logger:
             for file in os.listdir(self.MTG_properties_raw_dirpath):
                 if '.nc' in file and file != "merged.nc":
                     os.remove(self.MTG_properties_raw_dirpath + '/' + file)
-        
+
+        if self.recording_shoot:
+            # convert list of outputs into dataframes
+            for outputs_df_list, outputs_filename, index_columns in (
+                    (self.shoot.axes_all_data_list, "axes_outputs.csv", ['t', 'plant', 'axis']),
+                    (self.shoot.organs_all_data_list, "organs_outputs.csv", ['t', 'plant', 'axis', 'organ']),
+                    (self.shoot.hiddenzones_all_data_list, "hiddenzones_outputs.csv", ['t', 'plant', 'axis', 'metamer']),
+                    (self.shoot.elements_all_data_list, "elements_outputs.csv", ['t', 'plant', 'axis', 'metamer', 'organ', 'element'])):
+                outputs_filepath = os.path.join(self.shoot_properties_dirpath, outputs_filename)
+                outputs_df = pd.concat(outputs_df_list, keys=self.shoot.all_simulation_steps, sort=False)
+                outputs_df.reset_index(0, inplace=True)
+                outputs_df.rename({'level_0': 't'}, axis=1, inplace=True)
+                outputs_df = outputs_df.reindex(index_columns + outputs_df.columns.difference(index_columns).tolist(),
+                                                axis=1, copy=False)
+                outputs_df.fillna(value=np.nan, inplace=True)  # Convert back None to NaN
+                print(outputs_df)
+                outputs_df.to_csv(outputs_filepath)
+
         if self.recording_performance:
             self.simulation_performance.to_csv(os.path.join(self.outputs_dirpath, "simulation_performance.csv"))
 
