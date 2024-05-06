@@ -24,6 +24,9 @@ class Logger:
                  plotted_property="hexose_exudation", show_soil=True,
                  echo=True):
 
+        # First Handle exceptions
+        self.exceptions = []
+
         self.data_structures = model_instance.data_structures
         self.props = {}
         for name, data_structure in self.data_structures.items():
@@ -103,9 +106,10 @@ class Logger:
         if recording_images:
             self.plotter = pv.Plotter(off_screen=not self.echo, window_size=[1080, 1900], lighting="three lights")
             self.plotter.set_background("brown")
-            self.plotter.camera_position = [(0.5898493617465133, 0.16753767713142573, -0.15589754972162514),
-                                             (0.05803968951919419, 0.020133560539500505, -0.15067328694744955),
-                                             (0.01686321888881693, -0.025414423639937334, 0.9995347612363252)]
+            self.plotter.camera_position = [(0.4581924448845271, 0.12144416998857457, 0.12454786289421049),
+                                             (-0.017397782864733282, -0.012174494144901625, -0.121494373010319),
+                                             (-0.4426662678134215, -0.0704471847231716, 0.893914855847421)]
+
             framerate = 15
             self.plotter.open_movie(os.path.join(self.root_images_dirpath, "root_movie.mp4"), framerate)
             self.plotter.show(interactive_update=True)
@@ -149,15 +153,17 @@ class Logger:
     def __call__(self):
         self.current_step_start_time = self.elapsed_time
         
-        if self.echo:
+        if self.echo and self.simulation_time_in_hours > 0:
             sys.stdout.write(f"\r[RUNNING] {self.simulation_time_in_hours} hours | step took {round(self.current_step_start_time - self.previous_step_start_time, 1)} s | {time.strftime('%H:%M:%S', time.gmtime(int(self.elapsed_time)))} since simulation started")
 
         if self.recording_performance:
             self.recording_step_performance()
-        
+
+        if self.recording_sums:
+            self.recording_summed_MTG_properties_to_csv()
+
+        # Only the costly logging operations are restricted here
         if self.simulation_time_in_hours % self.logging_period_in_hours == 0:
-            if self.recording_sums:
-                self.recording_summed_MTG_properties_to_csv()
             if self.recording_raw:
                 self.recording_raw_MTG_properties_in_xarray()
             if self.recording_mtg:
@@ -365,8 +371,14 @@ class Logger:
     def stop(self):
         if self.echo:
             elapsed_at_simulation_end = self.elapsed_time
+            printed_time = time.strftime('%H:%M:%S', time.gmtime(int(elapsed_at_simulation_end)))
             print("") # to receive the flush
-            print(f"[INFO] Simulation ended after {round(elapsed_at_simulation_end/60, 1)} min without error")
+            if len(self.exceptions) == 0:
+                print(f"[INFO] Simulation ended after {printed_time} min without error")
+            else:
+                print(f"[INFO] Simulation ended after {printed_time} min, INTERRUPTED BY THE FOLLOWING ERRORS : ")
+                for error in self.exceptions:
+                    print(" - ", error)
             print("[INFO] Now proceeding to data writing on disk...")
 
         if self.recording_sums:
