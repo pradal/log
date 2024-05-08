@@ -20,9 +20,9 @@ class Logger:
     def __init__(self, model_instance, outputs_dirpath="", 
                  output_variables={}, scenario={"default":1}, time_step_in_hours=1, 
                  logging_period_in_hours=1, 
-                 recording_sums=True, recording_raw=True, recording_mtg=True, recording_images=True, recording_performance=True,
-                 recording_shoot=True,
-                 plotted_property="hexose_exudation", show_soil=True,
+                 recording_sums=False, recording_raw=False, recording_mtg=False, recording_images=False, recording_performance=False,
+                 recording_shoot=False,
+                 plotted_property="hexose_exudation", show_soil=False,
                  echo=True):
 
         # First Handle exceptions
@@ -110,7 +110,11 @@ class Logger:
             self.simulation_performance = pd.concat([self.simulation_performance, units])
 
         if recording_images:
-            sizes = {"landscape": [1920, 1080], "portrait": [1080, 1920], "square": [1080, 1080], "small_height": [960, 1280]}
+            self.all_times_low, self.all_times_high = min(self.props["root"][self.plotted_property].values()), max(self.props["root"][self.plotted_property].values())
+            if self.all_times_low == 0:
+                self.all_times_low = self.all_times_high / 1000
+
+            sizes = {"landscape": [1920, 1080], "portrait": [1088, 1920], "square": [1080, 1080], "small_height": [960, 1280]}
             self.plotter = pv.Plotter(off_screen=not self.echo, window_size=sizes["portrait"], lighting="three lights")
             self.plotter.set_background("brown")
             self.plotter.camera_position = [(0.4581924448845271, 0.12144416998857457, 0.12454786289421049),
@@ -285,9 +289,16 @@ class Logger:
             #Updates positions with turtle
             plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
             root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
+
+            prop_min, prop_max = min(self.props["root"][self.plotted_property].values()), max(self.props["root"][self.plotted_property].values())
+            if prop_min < self.all_times_low and prop_min != 0:
+                self.all_times_low = prop_min
+            if prop_max > self.all_times_high:
+                self.all_times_high = prop_max
+
             self.plotter.remove_actor(self.current_mesh)
             self.plotter.remove_actor(self.plot_text)
-            self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False, specular=1., log_scale=True)
+            self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="nipy_spectral", clim=[self.all_times_low, self.all_times_high], show_edges=False, specular=1., log_scale=True)
             # TODO : Temporary, just because the meteo file begins at PAR peak
             self.plot_text = self.plotter.add_text(f" day {int((self.simulation_time_in_hours + 12) / 24)} : {(self.simulation_time_in_hours + 12) % 24} h", position="upper_left")
             if "soil" in self.data_structures.keys() and self.show_soil:
@@ -414,7 +425,9 @@ class Logger:
                     (self.shoot.axes_all_data_list, "axes_outputs.csv", ['t', 'plant', 'axis']),
                     (self.shoot.organs_all_data_list, "organs_outputs.csv", ['t', 'plant', 'axis', 'organ']),
                     (self.shoot.hiddenzones_all_data_list, "hiddenzones_outputs.csv", ['t', 'plant', 'axis', 'metamer']),
-                    (self.shoot.elements_all_data_list, "elements_outputs.csv", ['t', 'plant', 'axis', 'metamer', 'organ', 'element'])):
+                    (self.shoot.elements_all_data_list, "elements_outputs.csv", ['t', 'plant', 'axis', 'metamer', 'organ', 'element']),
+                    (self.shoot.soils_all_data_list, "soil_outputs.csv", ['t', 'plant', 'axis'])
+                ):
                 outputs_filepath = os.path.join(self.shoot_properties_dirpath, outputs_filename)
                 outputs_df = pd.concat(outputs_df_list, keys=self.shoot.all_simulation_steps, sort=False)
                 outputs_df.reset_index(0, inplace=True)
@@ -422,7 +435,6 @@ class Logger:
                 outputs_df = outputs_df.reindex(index_columns + outputs_df.columns.difference(index_columns).tolist(),
                                                 axis=1, copy=False)
                 outputs_df.fillna(value=np.nan, inplace=True)  # Convert back None to NaN
-                print(outputs_df)
                 outputs_df.to_csv(outputs_filepath)
 
         if self.recording_performance:

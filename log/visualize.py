@@ -560,8 +560,9 @@ def soil_voxels_mesh(g, voxels, cmap_property):
     return soil_grid
 
 
-def shoot_plantgl_to_mesh(g, cmap_property="", scale=0.3):
+def shoot_plantgl_to_mesh(g, cmap_property="", scale=0.4):
     geometries = g.property("geometry")
+    print(geometries)
     shoot_mesh_list = []
     for vid, geom in geometries.items():
         t = pgl.Tesselator()
