@@ -562,18 +562,16 @@ def soil_voxels_mesh(g, voxels, cmap_property):
 
 def shoot_plantgl_to_mesh(g, cmap_property="", scale=0.4):
     geometries = g.property("geometry")
-    print(geometries)
-    shoot_mesh_list = []
+    shoot_mesh_dict = {}
+
     for vid, geom in geometries.items():
         t = pgl.Tesselator()
         geom.apply(t)
         mesh = t.discretization
         tmesh = trimesh.Trimesh(mesh.pointList, mesh.indexList)
-        shoot_mesh_list += [pv.wrap(tmesh).scale([scale, scale, scale])]
+        shoot_mesh_dict[vid] = pv.wrap(tmesh).scale([scale, scale, scale])
 
-    shoot_mesh = pv.MultiBlock(shoot_mesh_list)
-
-    return shoot_mesh
+    return shoot_mesh_dict
 
 
     

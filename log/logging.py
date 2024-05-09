@@ -110,18 +110,20 @@ class Logger:
             self.simulation_performance = pd.concat([self.simulation_performance, units])
 
         if recording_images:
-            self.all_times_low, self.all_times_high = min(self.props["root"][self.plotted_property].values()), max(self.props["root"][self.plotted_property].values())
+            self.prop_mins = [None for k in range(9)] + [min(self.props["root"][self.plotted_property].values())]
+            self.prop_maxs = [None for k in range(9)] + [max(self.props["root"][self.plotted_property].values())]
+            self.all_times_low, self.all_times_high = self.prop_mins[-1], self.prop_mins[-1]
             if self.all_times_low == 0:
                 self.all_times_low = self.all_times_high / 1000
 
             sizes = {"landscape": [1920, 1080], "portrait": [1088, 1920], "square": [1080, 1080], "small_height": [960, 1280]}
             self.plotter = pv.Plotter(off_screen=not self.echo, window_size=sizes["portrait"], lighting="three lights")
             self.plotter.set_background("brown")
-            self.plotter.camera_position = [(0.4581924448845271, 0.12144416998857457, 0.12454786289421049),
-                                             (-0.017397782864733282, -0.012174494144901625, -0.121494373010319),
-                                             (-0.4426662678134215, -0.0704471847231716, 0.893914855847421)]
+            self.plotter.camera_position = [(0.40610826249000453, 0.05998559870235731, 0.23104458533393235),
+                                             (-0.018207483487647478, -0.01240015490351695, -0.11434395584056384),
+                                             (-0.6256947390605705, -0.04745865688095235, 0.7786229956782554)]
 
-            framerate = 15
+            framerate = 10
             self.plotter.open_movie(os.path.join(self.root_images_dirpath, "root_movie.mp4"), framerate)
             self.plotter.show(interactive_update=True)
 
@@ -140,8 +142,10 @@ class Logger:
                                              cmap_property="C_hexose_soil")
                 self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="hot", show_edges=False, specular=1., opacity=0.1)
             if "shoot" in self.data_structures.keys():
+                self.shoot_current_meshes = {}
                 shoot_mesh = shoot_plantgl_to_mesh(self.data_structures["shoot"])
-                self.shoot_current_mesh = self.plotter.add_mesh(shoot_mesh, color="green", show_edges=False, specular=1.)
+                for vid in shoot_mesh.keys():
+                    self.shoot_current_meshes[vid] = self.plotter.add_mesh(shoot_mesh[vid], color="green", show_edges=False, specular=1.)
 
         self.start_time = timeit.default_timer()
         self.previous_step_start_time = self.start_time
@@ -173,10 +177,11 @@ class Logger:
         if self.recording_sums:
             self.recording_summed_MTG_properties_to_csv()
 
+        if self.recording_raw:
+            self.recording_raw_MTG_properties_in_xarray()
+
         # Only the costly logging operations are restricted here
         if self.simulation_time_in_hours % self.logging_period_in_hours == 0:
-            if self.recording_raw:
-                self.recording_raw_MTG_properties_in_xarray()
             if self.recording_mtg:
                 self.recording_mtg_files()
             if self.recording_images:
@@ -249,14 +254,14 @@ class Logger:
                        time=0):
         # convert dict to dataframe with index corresponding to coordinates in topology space
         # (not just x, y, z, t thanks to MTG structure)
-        props_dict = {k:v for k, v in self.props["root"].items() if type(v)==dict}
+        props_dict = {k:v for k, v in self.props["root"].items() if type(v) == dict and k in variables}
         props_df = pd.DataFrame.from_dict(props_dict)
         props_df["vid"] = props_df.index
         props_df["t"] = [time for k in range(props_df.shape[0])]
         props_df = props_df.set_index(list(coordinates.keys()))
 
         # Select properties actually used in the current version of the target model
-        props_df = props_df[list(variables.keys())]
+        #props_df = props_df[list(variables.keys())]
 
         # Filter duplicated indexes
         props_df = props_df[~props_df.index.duplicated()]
@@ -274,8 +279,8 @@ class Logger:
             getattr(props_ds, k).attrs.update(v)
 
         # Dataset variables' attribute metadata
-        for k, v in variables.items():
-            getattr(props_ds, k).attrs.update(v)
+        for k in props_dict.keys():
+            getattr(props_ds, k).attrs.update(variables[k])
 
         return props_ds
     
@@ -290,11 +295,19 @@ class Logger:
             plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
             root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
 
-            prop_min, prop_max = min(self.props["root"][self.plotted_property].values()), max(self.props["root"][self.plotted_property].values())
-            if prop_min < self.all_times_low and prop_min != 0:
-                self.all_times_low = prop_min
-            if prop_max > self.all_times_high:
-                self.all_times_high = prop_max
+            # Accounts for smooth color bar transitions for videos.
+            self.prop_mins = self.prop_mins[1:] + [min(self.props["root"][self.plotted_property].values())]
+            self.prop_maxs = self.prop_maxs[1:] + [max(self.props["root"][self.plotted_property].values())]
+            mean_mins = np.mean([e for e in self.prop_mins if e])
+            mean_maxs = np.mean([e for e in self.prop_maxs if e])
+            if self.prop_mins[-1] < self.all_times_low and self.prop_mins[-1] != 0:
+                self.all_times_low = self.prop_mins[-1]
+            elif mean_mins > 1.1 * self.all_times_low:
+                self.all_times_low = mean_mins
+            if self.prop_maxs[-1] > self.all_times_high:
+                self.all_times_high = self.prop_maxs[-1]
+            elif mean_maxs < 0.9 * self.all_times_high:
+                self.all_times_high = mean_maxs
 
             self.plotter.remove_actor(self.current_mesh)
             self.plotter.remove_actor(self.plot_text)
@@ -316,9 +329,11 @@ class Logger:
             #pgl.Viewer.saveSnapshot(image_name)
 
         if "shoot" in self.data_structures.keys():
-            self.plotter.remove_actor(self.shoot_current_mesh)
-            shoot_mesh = shoot_plantgl_to_mesh(self.data_structures["shoot"])
-            self.shoot_current_mesh = self.plotter.add_mesh(shoot_mesh, color="lightgreen", show_edges=False, specular=1.)
+            shoot_meshes = shoot_plantgl_to_mesh(self.data_structures["shoot"])
+            for vid in shoot_meshes.keys():
+                if vid in self.shoot_current_meshes:
+                    self.plotter.remove_actor(self.shoot_current_meshes[vid])
+                self.shoot_current_meshes[vid] = self.plotter.add_mesh(shoot_meshes[vid], color="lightgreen", show_edges=False, specular=1.)
 
         self.plotter.update()
         self.plotter.write_frame()
