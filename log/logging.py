@@ -111,11 +111,7 @@ class Logger:
             self.log_xarray = []
 
         if self.recording_performance:
-            self.simulation_performance = pd.DataFrame(columns=["time_step_duration"])
-            units = pd.DataFrame({"time_step_duration": "s"},
-                                 columns=["time_step_duration"],
-                                 index=["unit"])
-            self.simulation_performance = pd.concat([self.simulation_performance, units])
+            self.simulation_performance = pd.DataFrame()
 
         if recording_images:
             self.prop_mins = [None for k in range(9)] + [min(self.props["root"][self.plotted_property].values())]
@@ -232,10 +228,9 @@ class Logger:
             steps_times[step] /= total_time
         # To visualize first which step is the most costly
         steps_times = dict(sorted(steps_times.items(), key=lambda item: item[1]))
-        steps_times["time_step_duration"] = total_time
         step_elapsed = pd.DataFrame(
             steps_times,
-            columns=["time_step_duration"] + steps,
+            columns=steps,
             index=[simulation_time_in_hours])
 
         return step_elapsed
