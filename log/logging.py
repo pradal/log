@@ -10,6 +10,7 @@ from dataclasses import fields
 import pyvista as pv
 import matplotlib.pyplot as plt
 import inspect
+import logging
 #from gudhi import bottleneck_distance
 
 import openalea.plantgl.all as pgl
@@ -156,6 +157,10 @@ class Logger:
                     self.shoot_current_meshes[vid] = self.plotter.add_mesh(shoot_mesh[vid], color="green",
                                                                            show_edges=False, specular=1.)
 
+        if self.echo:
+            logging.basicConfig(filename=os.path.join(outputs_dirpath, '[RUNNING] simulation.log'), filemode='w',
+                                format='%(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
         self.start_time = timeit.default_timer()
         self.previous_step_start_time = self.start_time
         self.simulation_time_in_hours = 0
@@ -178,8 +183,9 @@ class Logger:
         self.current_step_start_time = self.elapsed_time
 
         if self.echo and self.simulation_time_in_hours > 0:
-            sys.stdout.write(
-                f"\r[RUNNING] {self.simulation_time_in_hours} hours | step took {round(self.current_step_start_time - self.previous_step_start_time, 1)} s | {time.strftime('%H:%M:%S', time.gmtime(int(self.elapsed_time)))} since simulation started")
+            log = f"\r[RUNNING] {self.simulation_time_in_hours} hours | step took {round(self.current_step_start_time - self.previous_step_start_time, 1)} s | {time.strftime('%H:%M:%S', time.gmtime(int(self.elapsed_time)))} since simulation started"
+            sys.stdout.write(log)
+            logging.info(log)
 
         if self.recording_sums:
             self.recording_summed_MTG_properties_to_csv()
@@ -197,7 +203,7 @@ class Logger:
         self.simulation_time_in_hours += self.time_step_in_hours
         self.previous_step_start_time = self.current_step_start_time
 
-    def run_model_step(self):
+    def run_and_monitor_model_step(self):
         if self.recording_performance:
             # Also runs the time step!!
             self.recording_step_performance()
@@ -214,7 +220,7 @@ class Logger:
         loop_start = time.time()
         for step in steps:
             t_start = time.time()
-            eval(step)
+            exec (step)
             steps_times[step] = time.time() - t_start
         total_time = time.time() - loop_start
         for step in steps:
@@ -446,15 +452,18 @@ class Logger:
 
     def stop(self):
         if self.echo:
+            logging.shutdown()
             elapsed_at_simulation_end = self.elapsed_time
             printed_time = time.strftime('%H:%M:%S', time.gmtime(int(elapsed_at_simulation_end)))
             print("")  # to receive the flush
             if len(self.exceptions) == 0:
                 print(f"[INFO] Simulation ended after {printed_time} min without error")
+                os.rename(os.path.join(self.outputs_dirpath, "[RUNNING] simulation.log"), os.path.join(self.outputs_dirpath, "[FINISHED] simulation.log"))
             else:
                 print(f"[INFO] Simulation ended after {printed_time} min, INTERRUPTED BY THE FOLLOWING ERRORS : ")
                 for error in self.exceptions:
                     print(" - ", error)
+                os.rename(os.path.join(self.outputs_dirpath, "[RUNNING] simulation.log"), os.path.join(self.outputs_dirpath, "[STOPPED] simulation.log"))
             print("[INFO] Now proceeding to data writing on disk...")
 
         if self.recording_sums:
