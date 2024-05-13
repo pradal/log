@@ -22,7 +22,7 @@ class Logger:
     def __init__(self, model_instance, outputs_dirpath="",
                  output_variables={}, scenario={"default": 1}, time_step_in_hours=1,
                  logging_period_in_hours=1,
-                 recording_sums=False, recording_raw=False, recording_mtg=False, recording_images=False,
+                 recording_sums=False, recording_raw=False, recording_mtg=False, recording_images=False, recording_off_screen=False,
                  recording_performance=False,
                  recording_shoot=False,
                  plotted_property="hexose_exudation", show_soil=False,
@@ -67,6 +67,7 @@ class Logger:
         if "root" not in self.data_structures.keys():
             recording_images = False
         self.recording_images = recording_images
+        self.recording_off_screen = recording_off_screen
         self.show_soil = show_soil
         self.plotted_property = plotted_property
         self.recording_performance = recording_performance
@@ -125,6 +126,10 @@ class Logger:
 
             sizes = {"landscape": [1920, 1080], "portrait": [1088, 1920], "square": [1080, 1080],
                      "small_height": [960, 1280]}
+            
+            if self.recording_off_screen:
+                pv.start_xvfb()
+
             self.plotter = pv.Plotter(off_screen=not self.echo, window_size=sizes["portrait"], lighting="three lights")
             self.plotter.set_background("brown")
             self.plotter.camera_position = [(0.40610826249000453, 0.05998559870235731, 0.23104458533393235),
