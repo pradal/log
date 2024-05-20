@@ -11,7 +11,7 @@ import pyvista as pv
 import matplotlib.pyplot as plt
 import inspect
 import logging
-#from gudhi import bottleneck_distance
+from gudhi import bottleneck_distance
 
 import openalea.plantgl.all as pgl
 from openalea.mtg.traversal import pre_order, post_order
@@ -26,6 +26,7 @@ class Logger:
                  recording_performance=False,
                  recording_shoot=False,
                  plotted_property="hexose_exudation", show_soil=False,
+                 recording_barcodes=False, compare_to_ref_barcode=False, barcodes_path="inputs/persistent_barcodes.pckl",
                  echo=True):
 
         # First Handle exceptions
@@ -71,10 +72,22 @@ class Logger:
         self.show_soil = show_soil
         self.plotted_property = plotted_property
         self.recording_performance = recording_performance
+        self.recording_barcodes = recording_barcodes
+        self.compare_to_ref_barcode = compare_to_ref_barcode
+        
+        if self.compare_to_ref_barcode:
+            self.recording_barcodes = True
+            with open(barcodes_path, "rb") as f:
+                self.ref_persitent_barcodes = pickle.load(f)
+
+        if self.recording_barcodes:
+            self.persistent_barcodes = {}
+                
         self.echo = echo
         # TODO : add a scenario named folder
         self.root_images_dirpath = os.path.join(self.outputs_dirpath, "root_images")
         self.MTG_files_dirpath = os.path.join(self.outputs_dirpath, "MTG_files")
+        self.MTG_barcodes_dirpath = os.path.join(self.outputs_dirpath, "MTG_barcodes")
         self.MTG_properties_dirpath = os.path.join(self.outputs_dirpath, "MTG_properties")
         self.MTG_properties_summed_dirpath = os.path.join(self.outputs_dirpath, "MTG_properties/MTG_properties_summed")
         self.MTG_properties_raw_dirpath = os.path.join(self.outputs_dirpath, "MTG_properties/MTG_properties_raw")
@@ -85,6 +98,7 @@ class Logger:
         self.create_or_empty_directory(self.MTG_properties_dirpath)
         self.create_or_empty_directory(self.MTG_properties_summed_dirpath)
         self.create_or_empty_directory(self.MTG_properties_raw_dirpath)
+        self.create_or_empty_directory(self.MTG_barcodes_dirpath)
         self.create_or_empty_directory(self.shoot_properties_dirpath)
 
         if self.output_variables == {}:
@@ -190,9 +204,13 @@ class Logger:
 
         if self.recording_sums:
             self.recording_summed_MTG_properties_to_csv()
+            
 
         if self.recording_raw:
             self.recording_raw_MTG_properties_in_xarray()
+
+        if self.recording_barcodes:
+            self.barcode_from_mtg()
 
         # Only the costly logging operations are restricted here
         if self.simulation_time_in_hours % self.logging_period_in_hours == 0:
@@ -344,8 +362,9 @@ class Logger:
             # Accounts for smooth color bar transitions for videos.
             self.prop_mins = self.prop_mins[1:] + [min(self.props["root"][self.plotted_property].values())]
             self.prop_maxs = self.prop_maxs[1:] + [max(self.props["root"][self.plotted_property].values())]
-            mean_mins = np.mean([e for e in self.prop_mins if e])
-            mean_maxs = np.mean([e for e in self.prop_maxs if e])
+            
+            mean_mins = np.mean([e for e in self.prop_mins if e is not None])
+            mean_maxs = np.mean([e for e in self.prop_maxs if e is not None])
             if self.prop_mins[-1] < self.all_times_low and self.prop_mins[-1] != 0:
                 self.all_times_low = self.prop_mins[-1]
             elif mean_mins > 1.1 * self.all_times_low:
@@ -366,7 +385,7 @@ class Logger:
                 position="upper_left")
             if "soil" in self.data_structures.keys() and self.show_soil:
                 soil_grid = soil_voxels_mesh(self.data_structures["root"], self.data_structures["soil"],
-                                             cmap_property="C_hexose_soil")
+                                             cmap_property="C_mineralN_soil")
                 self.plotter.remove_actor(self.soil_grid_in_scene)
                 self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="hot", show_edges=False, specular=1.,
                                                                 opacity=0.1)
@@ -395,9 +414,10 @@ class Logger:
         interstitial_dataset.to_netcdf(
             os.path.join(self.MTG_properties_raw_dirpath, f't={self.simulation_time_in_hours}.nc'))
 
-    def mtg_persistent_homology(self, g):
-        props = g.properties()
-        root_gen = g.component_roots_at_scale_iter(self.g.root, scale=1)
+    def barcode_from_mtg(self):
+        props = self.props["root"]
+        g = self.data_structures["root"]
+        root_gen = g.component_roots_at_scale_iter(g.root, scale=1)
         root = next(root_gen)
 
         # We travel in the MTG from the root collar to the tips:
@@ -408,7 +428,7 @@ class Logger:
             else:
                 parent = g.parent(vid)
                 g.node(vid).dist_to_collar = g.node(parent).dist_to_collar + g.node(parent).length
-                if self.props["edge_type"][vid] == "+":
+                if props["edge_type"][vid] == "+":
                     g.node(vid).order = g.node(parent).order + 1
                 else:
                     g.node(vid).order = g.node(parent).order
@@ -433,7 +453,10 @@ class Logger:
                     homology_barcode += [[props["dist_to_collar"][v] for v in new_group]]
                     colored_prop += [plt.cm.cool(np.mean([props[prop][v] for v in new_group]) / 5)]
 
-        persitent_diagram = np.array([[min(axs), max(axs)] for axs in homology_barcode])
+        self.persistent_barcodes[self.time_step_in_hours] = np.array([[min(axs), max(axs)] for axs in homology_barcode])
+
+
+    def plot_persistent_diagram(self, persistent_diagram):
 
         fig, ax = plt.subplots(2)
 
@@ -443,12 +466,8 @@ class Logger:
 
         ax[1].scatter(persitent_diagram[:, 0], persitent_diagram[:, 1], c=colored_prop)
 
-        # TODO move out
-        #print(bottleneck_distance(persitent_diagram, persitent_diagram, 0.))
-
         plt.show()
 
-        return persitent_diagram
 
     def stop(self):
         if self.echo:
@@ -467,6 +486,12 @@ class Logger:
             print("[INFO] Now proceeding to data writing on disk...")
 
         if self.recording_sums:
+            if self.compare_to_ref_barcode:
+                barcodes_distances = {t: bottleneck_distance(self.ref_persitent_barcodes[t], barcode, 0) for t, barcode in self.persistent_barcodes.items()}
+                print(barcodes_distances)
+                self.plant_scale_properties["bottleneck_distances"] = pd.Series(barcodes_distances)
+                print(self.plant_scale_properties)
+
             # Saving in memory summed properties
             self.plant_scale_properties.to_csv(
                 os.path.join(self.MTG_properties_summed_dirpath, "plant_scale_properties.csv"))
@@ -488,6 +513,10 @@ class Logger:
             for file in os.listdir(self.MTG_properties_raw_dirpath):
                 if '.nc' in file and file != "merged.nc":
                     os.remove(self.MTG_properties_raw_dirpath + '/' + file)
+
+        if self.recording_barcodes and not self.compare_to_ref_barcode:
+            with open(os.path.join(self.MTG_barcodes_dirpath, f'persistent_barcodes.pckl'), "wb") as f:
+                pickle.dump(self.persistent_barcodes, f)
 
         if self.recording_shoot:
             # convert list of outputs into dataframes
