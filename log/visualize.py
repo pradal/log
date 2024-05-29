@@ -507,13 +507,14 @@ def lines_from_points(points):
     return poly
 
 
-def plot_mtg_alt(g, cmap_property):
+def plot_mtg_alt(g, cmap_property, flow_property=True, root_hairs=False):
     props = g.properties()
     root_gen = g.component_roots_at_scale_iter(g.root, scale=1)
     root = next(root_gen)
 
     plotted_vids = []
     tubes = []
+    root_hairs_tubes = []
     for vid in pre_order(g, root):
         if vid not in plotted_vids:
             root = g.Axis(vid)
@@ -526,14 +527,43 @@ def plot_mtg_alt(g, cmap_property):
 
             points = np.array([[props["x2"][v], props["y2"][v], props["z2"][v]] for v in root])
             line = lines_from_points(points)
-            # TODO : do it twice to display root hairs
-            line[cmap_property] = [props[cmap_property][v] for v in root]
+
+            if root_hairs:
+                root_hairs_line = line
+                root_hairs_line["living_root_hairs_struct_mass"] = [props["living_root_hairs_struct_mass"][v] for v in root]
+                root_hairs_line["radius"] = [props["radius"][v] + props["root_hair_length"][v] for v in root]
+                root_hairs_opacity = []
+                for v in root:
+                    if props["length"][v] > 0:
+                        root_hairs_opacity += [props["total_root_hairs_number"][v] / props["length"][v]]
+                    else:
+                        root_hairs_opacity += [0]
+                root_hairs_tubes += [root_hairs_line.tube(scalars="radius", absolute=True)]
+            
+            if flow_property:
+                color_property = []
+                for v in root:
+                    if props["length"][v] > 0:
+                        color_property += [props[cmap_property][v] / props["length"][v]]
+                    else:
+                        color_property += [0]
+                line[cmap_property + ".m-1"] = color_property
+            else:
+                color_property = [props[cmap_property][v] for v in root]
+                line[cmap_property] = color_property
             # Adjust radius of each element
             line["radius"] = [props["radius"][v] for v in root]
             tubes += [line.tube(scalars="radius", absolute=True)]
     
     root_system = pv.MultiBlock(tubes)
-    return root_system
+
+    if root_hairs:
+        root_hairs_system = pv.MultiBlock(root_hairs_tubes)
+        return root_system, root_hairs_system, root_hairs_opacity
+    
+    else:
+        return root_system, color_property
+
 
 
 def soil_voxels_mesh(g, voxels, cmap_property):
@@ -553,8 +583,9 @@ def soil_voxels_mesh(g, voxels, cmap_property):
                 -voxels["z2"][vy][vz][vx]
             ))
             voxel[cmap_property] = [voxels[cmap_property][vy][vz][vx]]*6
-
-            voxel_mesh_list += [voxel]
+            # Only to filter which voxels to show
+            if voxels[cmap_property][vy][vz][vx] > 0.1:
+                voxel_mesh_list += [voxel]
 
     soil_grid = pv.MultiBlock(voxel_mesh_list)
     return soil_grid

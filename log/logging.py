@@ -13,21 +13,62 @@ import inspect
 import logging
 from gudhi import bottleneck_distance
 
-import openalea.plantgl.all as pgl
 from openalea.mtg.traversal import pre_order, post_order
+from openalea.mtg import turtle as turt
 from log.visualize import plot_mtg, plot_mtg_alt, soil_voxels_mesh, shoot_plantgl_to_mesh
 
 
 class Logger:
+
+    light_log = dict(recording_images=False, recording_off_screen=True, plotted_property="import_Nm", show_soil=True,
+                    recording_mtg=False,
+                    recording_raw=False,
+                    recording_sums=True,
+                    recording_performance=False,
+                    recording_barcodes=False, compare_to_ref_barcode=False,
+                    on_sums=False,
+                    on_performance=False,
+                    animate_raw_logs=False)
+    
+    medium_log_focus_images = dict(recording_images=True, recording_off_screen=True, plotted_property="import_Nm", show_soil=True,
+                    recording_mtg=False,
+                    recording_raw=False,
+                    recording_sums=True,
+                    recording_performance=True,
+                    recording_barcodes=False, compare_to_ref_barcode=False,
+                    on_sums=True,
+                    on_performance=True,
+                    animate_raw_logs=False)
+    
+    medium_log_focus_properties = dict(recording_images=False, recording_off_screen=True, plotted_property="nitrate_transporters_affinity_factor", flow_property=False, show_soil=True,
+                    recording_mtg=False,
+                    recording_raw=True,
+                    recording_sums=True,
+                    recording_performance=True,
+                    recording_barcodes=False, compare_to_ref_barcode=False,
+                    on_sums=True,
+                    on_performance=True,
+                    animate_raw_logs=True)
+    
+    heavy_log = dict(recording_images=True, recording_off_screen=True, plotted_property="import_Nm", flow_property=True, show_soil=True,
+                    recording_mtg=False,
+                    recording_raw=True,
+                    recording_sums=True,
+                    recording_performance=True,
+                    recording_barcodes=True, compare_to_ref_barcode=False, 
+                    on_sums=True,
+                    on_performance=True,
+                    animate_raw_logs=True)
+
     def __init__(self, model_instance, outputs_dirpath="",
                  output_variables={}, scenario={"default": 1}, time_step_in_hours=1,
                  logging_period_in_hours=1,
                  recording_sums=False, recording_raw=False, recording_mtg=False, recording_images=False, recording_off_screen=False,
                  recording_performance=False,
                  recording_shoot=False,
-                 plotted_property="hexose_exudation", show_soil=False,
+                 plotted_property="hexose_exudation", flow_property=False, show_soil=False,
                  recording_barcodes=False, compare_to_ref_barcode=False, barcodes_path="inputs/persistent_barcodes.pckl",
-                 echo=True):
+                 echo=True, **kwargs):
 
         # First Handle exceptions
         self.exceptions = []
@@ -71,6 +112,7 @@ class Logger:
         self.recording_off_screen = recording_off_screen
         self.show_soil = show_soil
         self.plotted_property = plotted_property
+        self.flow_property = flow_property
         self.recording_performance = recording_performance
         self.recording_barcodes = recording_barcodes
         self.compare_to_ref_barcode = compare_to_ref_barcode
@@ -97,9 +139,12 @@ class Logger:
         self.create_or_empty_directory(self.MTG_files_dirpath)
         self.create_or_empty_directory(self.MTG_properties_dirpath)
         self.create_or_empty_directory(self.MTG_properties_summed_dirpath)
-        self.create_or_empty_directory(self.MTG_properties_raw_dirpath)
-        self.create_or_empty_directory(self.MTG_barcodes_dirpath)
-        self.create_or_empty_directory(self.shoot_properties_dirpath)
+        if self.recording_raw:
+            self.create_or_empty_directory(self.MTG_properties_raw_dirpath)
+        if self.recording_barcodes:
+            self.create_or_empty_directory(self.MTG_barcodes_dirpath)
+        if self.recording_shoot:
+            self.create_or_empty_directory(self.shoot_properties_dirpath)
 
         if self.output_variables == {}:
             for model in self.models:
@@ -128,57 +173,60 @@ class Logger:
             self.simulation_performance = pd.DataFrame()
 
         if recording_images:
-            self.prop_mins = [None for k in range(9)] + [min(self.props["root"][self.plotted_property].values())]
-            self.prop_maxs = [None for k in range(9)] + [max(self.props["root"][self.plotted_property].values())]
-            self.all_times_low, self.all_times_high = self.prop_mins[-1], self.prop_mins[-1]
-            if self.all_times_low == 0:
-                self.all_times_low = self.all_times_high / 1000
+            self.log_mtg_coordinates()
+            self.init_images_plotter()
 
-            sizes = {"landscape": [1920, 1080], "portrait": [1088, 1920], "square": [1080, 1080],
-                     "small_height": [960, 1280]}
-            
-            if self.recording_off_screen:
-                pv.start_xvfb()
-
-            self.plotter = pv.Plotter(off_screen=not self.echo, window_size=sizes["portrait"], lighting="three lights")
-            self.plotter.set_background("brown")
-            self.plotter.camera_position = [(0.40610826249000453, 0.05998559870235731, 0.23104458533393235),
-                                            (-0.018207483487647478, -0.01240015490351695, -0.11434395584056384),
-                                            (-0.6256947390605705, -0.04745865688095235, 0.7786229956782554)]
-
-            framerate = 10
-            self.plotter.open_movie(os.path.join(self.root_images_dirpath, "root_movie.mp4"), framerate)
-            self.plotter.show(interactive_update=True)
-
-            # NOTE : Not necessary since voxels provide the scale information :
-            # First plot a 1 cm scale bar
-            # self.plotter.add_mesh(pv.Line((0, 0.08, 0), (0, 0.09, 0)), color='k', line_width=7)
-            # self.plotter.add_text("1 cm", position="upper_right")
-
-            # Then add initial states of plotted compartments
-            plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
-            root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
-            self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", show_edges=False)
-            self.plot_text = self.plotter.add_text(f"Simulation starting...", position="upper_left")
-            if "soil" in self.data_structures.keys() and self.show_soil:
-                soil_grid = soil_voxels_mesh(self.data_structures["root"], self.data_structures["soil"],
-                                             cmap_property="C_hexose_soil")
-                self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="hot", show_edges=False, specular=1.,
-                                                                opacity=0.1)
-            if "shoot" in self.data_structures.keys():
-                self.shoot_current_meshes = {}
-                shoot_mesh = shoot_plantgl_to_mesh(self.data_structures["shoot"])
-                for vid in shoot_mesh.keys():
-                    self.shoot_current_meshes[vid] = self.plotter.add_mesh(shoot_mesh[vid], color="green",
-                                                                           show_edges=False, specular=1.)
-
-        if self.echo:
-            logging.basicConfig(filename=os.path.join(outputs_dirpath, '[RUNNING] simulation.log'), filemode='w',
+        logging.basicConfig(filename=os.path.join(outputs_dirpath, '[RUNNING] simulation.log'), filemode='w',
                                 format='%(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
         self.start_time = timeit.default_timer()
         self.previous_step_start_time = self.start_time
         self.simulation_time_in_hours = 0
+
+
+    def init_images_plotter(self):
+        self.prop_mins = [None for k in range(9)] + [min(self.props["root"][self.plotted_property].values())]
+        self.prop_maxs = [None for k in range(9)] + [max(self.props["root"][self.plotted_property].values())]
+        self.all_times_low, self.all_times_high = self.prop_mins[-1], self.prop_mins[-1]
+        if self.all_times_low == 0:
+            self.all_times_low = self.all_times_high / 1000
+
+        sizes = {"landscape": [1920, 1080], "portrait": [1088, 1920], "square": [1080, 1080],
+                    "small_height": [960, 1280]}
+        
+        if self.recording_off_screen:
+            pv.start_xvfb()
+
+        self.plotter = pv.Plotter(off_screen=not self.echo, window_size=sizes["portrait"], lighting="three lights")
+        self.plotter.set_background("brown")
+        self.plotter.camera_position = [(0.40610826249000453, 0.05998559870235731, 0.23104458533393235),
+                                        (-0.018207483487647478, -0.01240015490351695, -0.11434395584056384),
+                                        (-0.6256947390605705, -0.04745865688095235, 0.7786229956782554)]
+
+        framerate = 10
+        self.plotter.open_movie(os.path.join(self.root_images_dirpath, "root_movie.mp4"), framerate)
+        self.plotter.show(interactive_update=True)
+
+        # NOTE : Not necessary since voxels provide the scale information :
+        # First plot a 1 cm scale bar
+        # self.plotter.add_mesh(pv.Line((0, 0.08, 0), (0, 0.09, 0)), color='k', line_width=7)
+        # self.plotter.add_text("1 cm", position="upper_right")
+
+        # Then add initial states of plotted compartments
+        root_system_mesh, color_property = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
+        self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet", clim=[1e-10, 6e-9], show_edges=False, log_scale=True)
+        self.plot_text = self.plotter.add_text(f"Simulation starting...", position="upper_left")
+        if "soil" in self.data_structures.keys() and self.show_soil:
+            soil_grid = soil_voxels_mesh(self.data_structures["root"], self.data_structures["soil"],
+                                            cmap_property="C_hexose_soil")
+            self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="hot", show_edges=False, specular=1.,
+                                                            opacity=0.1)
+        if "shoot" in self.data_structures.keys():
+            self.shoot_current_meshes = {}
+            shoot_mesh = shoot_plantgl_to_mesh(self.data_structures["shoot"])
+            for vid in shoot_mesh.keys():
+                self.shoot_current_meshes[vid] = self.plotter.add_mesh(shoot_mesh[vid], color="green",
+                                                                        show_edges=False, specular=1.)
 
     def create_or_empty_directory(self, directory=""):
         if not os.path.exists(directory):
@@ -196,28 +244,32 @@ class Logger:
 
     def __call__(self):
         self.current_step_start_time = self.elapsed_time
+        self.log_mtg_coordinates()
 
-        if self.echo and self.simulation_time_in_hours > 0:
+        if self.simulation_time_in_hours > 0:
             log = f"\r[RUNNING] {self.simulation_time_in_hours} hours | step took {round(self.current_step_start_time - self.previous_step_start_time, 1)} s | {time.strftime('%H:%M:%S', time.gmtime(int(self.elapsed_time)))} since simulation started"
-            sys.stdout.write(log)
+            if self.echo:
+                sys.stdout.write(log)
             logging.info(log)
 
         if self.recording_sums:
             self.recording_summed_MTG_properties_to_csv()
             
-
         if self.recording_raw:
             self.recording_raw_MTG_properties_in_xarray()
 
         if self.recording_barcodes:
             self.barcode_from_mtg()
 
+        if self.recording_images and self.simulation_time_in_hours % 100 == 0.:
+            self.plotter.screenshot(os.path.join(self.outputs_dirpath, f"root_images/snapshot_{self.simulation_time_in_hours}.png"))
+
         # Only the costly logging operations are restricted here
         if self.simulation_time_in_hours % self.logging_period_in_hours == 0:
             if self.recording_mtg:
                 self.recording_mtg_files()
             if self.recording_images:
-                self.recording_images_from_plantgl()
+                self.recording_images_with_pyvista()
 
         self.simulation_time_in_hours += self.time_step_in_hours
         self.previous_step_start_time = self.current_step_start_time
@@ -273,7 +325,7 @@ class Logger:
                 for var in self.meanable_output_variables:
                     if var in prop.keys():
                         if len(emerged_vids) > 0:
-                            step_plant_scale.update({var: np.mean([prop[var][v] for v in emerged_vids])})
+                            step_plant_scale.update({var: np.mean([prop[var][v] for v in emerged_vids if v in prop[var].keys()])})
                         else:
                             step_plant_scale.update({var: None})
                 for var in self.plant_scale_state:
@@ -352,19 +404,23 @@ class Logger:
         with open(os.path.join(self.MTG_files_dirpath, f'root_{self.simulation_time_in_hours}.pckl'), "wb") as f:
             pickle.dump(self.data_structures["root"], f)
 
-    def recording_images_from_plantgl(self):
+    def recording_images_with_pyvista(self):
         if "root" in self.data_structures.keys():
             # TODO : step back according to max(||x2-x1||, ||y2-y1||, ||z2-z1||)
-            #Updates positions with turtle
-            plot_mtg(self.data_structures["root"], prop_cmap=self.plotted_property)
-            root_system_mesh = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property)
-
+            root_system_mesh, color_property = plot_mtg_alt(self.data_structures["root"], cmap_property=self.plotted_property, flow_property=self.flow_property)
+            if 0. in color_property:
+                color_property.remove(0.)
+            self.flow_property
+            self.plotting_root_hairs=True
+            #if self.plotting_root_hairs:
+                
             # Accounts for smooth color bar transitions for videos.
-            self.prop_mins = self.prop_mins[1:] + [min(self.props["root"][self.plotted_property].values())]
-            self.prop_maxs = self.prop_maxs[1:] + [max(self.props["root"][self.plotted_property].values())]
-            
+            self.prop_mins = self.prop_mins[1:] + [min(color_property)]
+            self.prop_maxs = self.prop_maxs[1:] + [max(color_property)]
+
             mean_mins = np.mean([e for e in self.prop_mins if e is not None])
             mean_maxs = np.mean([e for e in self.prop_maxs if e is not None])
+
             if self.prop_mins[-1] < self.all_times_low and self.prop_mins[-1] != 0:
                 self.all_times_low = self.prop_mins[-1]
             elif mean_mins > 1.1 * self.all_times_low:
@@ -376,8 +432,12 @@ class Logger:
 
             self.plotter.remove_actor(self.current_mesh)
             self.plotter.remove_actor(self.plot_text)
-            self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="nipy_spectral",
-                                                      clim=[self.all_times_low, self.all_times_high], show_edges=False,
+            # self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet",
+            #                                           clim=[self.all_times_low, self.all_times_high], show_edges=False,
+            #                                           specular=1., log_scale=True)
+            # TP, just to have a stable scale.
+            self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet",
+                                                      clim=[1e-10, 6e-9], show_edges=False,
                                                       specular=1., log_scale=True)
             # TODO : Temporary, just because the meteo file begins at PAR peak
             self.plot_text = self.plotter.add_text(
@@ -469,7 +529,72 @@ class Logger:
         plt.show()
 
 
+    def log_mtg_coordinates(self):
+
+        def root_visitor(g, v, turtle, gravitropism_coefficient=0.06):
+            n = g.node(v)
+
+            # For displaying the radius or length X times larger than in reality, we can define a zoom factor:
+            zoom_factor = 1.
+            # We look at the geometrical properties already defined within the root element:
+            radius = n.radius * zoom_factor
+            length = n.length * zoom_factor
+            angle_down = n.angle_down
+            angle_roll = n.angle_roll
+
+            # We get the x,y,z coordinates from the beginning of the root segment, before the turtle moves:
+            position1 = turtle.getPosition()
+            n.x1 = position1[0] / zoom_factor
+            n.y1 = position1[1] / zoom_factor
+            n.z1 = position1[2] / zoom_factor
+
+            # The direction of the turtle is changed:
+            turtle.down(angle_down)
+            turtle.rollL(angle_roll)
+
+            # Tropism is then taken into account:
+            # diameter = 2 * n.radius * zoom_factor
+            # elong = n.length * zoom_factor
+            # alpha = tropism_intensity * diameter * elong
+            # turtle.rollToVert(alpha, tropism_direction)
+            # if g.edge_type(v)=='+':
+            # diameter = 2 * n.radius * zoom_factor
+            # elong = n.length * zoom_factor
+            # alpha = tropism_intensity * diameter * elong
+            turtle.elasticity = gravitropism_coefficient * (n.original_radius / g.node(1).original_radius)
+            turtle.tropism = (0, 0, -1)
+
+            # The turtle is moved:
+            turtle.setId(v)
+            if n.type != "Root_nodule":
+                # We define the radius of the cylinder to be displayed:
+                turtle.setWidth(radius)
+                # We move the turtle by the length of the root segment:
+                turtle.F(length)
+            else: # SPECIAL CASE FOR NODULES
+                # We define the radius of the sphere to be displayed:
+                turtle.setWidth(radius)
+                # We "move" the turtle, but not according to the length (?):
+                turtle.F()
+
+            # We get the x,y,z coordinates from the end of the root segment, after the turtle has moved:
+            position2 = turtle.getPosition()
+            n.x2 = position2[0] / zoom_factor
+            n.y2 = position2[1] / zoom_factor
+            n.z2 = position2[2] / zoom_factor
+
+
+        # We initialize a turtle in PlantGL:
+        
+        turtle = turt.PglTurtle()
+        # We make the graph upside down:
+        turtle.down(180)
+        # We initialize the scene with the MTG g:
+        turt.TurtleFrame(self.data_structures["root"], visitor=root_visitor, turtle=turtle, gc=False)
+
+
     def stop(self):
+
         if self.echo:
             logging.shutdown()
             elapsed_at_simulation_end = self.elapsed_time
@@ -495,6 +620,16 @@ class Logger:
             # Saving in memory summed properties
             self.plant_scale_properties.to_csv(
                 os.path.join(self.MTG_properties_summed_dirpath, "plant_scale_properties.csv"))
+
+        if not self.recording_images:
+            print("[INFO] Saving a final snapshot...")
+            self.log_mtg_coordinates()
+            self.init_images_plotter()
+            self.recording_images_with_pyvista()
+
+        if not self.recording_mtg:
+            print("[INFO] Saving the final state of the MTG...")
+            self.recording_mtg_files()
 
         if self.recording_raw:
             # For saved xarray datasets
