@@ -442,9 +442,12 @@ class Logger:
             #                                           clim=[self.all_times_low, self.all_times_high], show_edges=False,
             #                                           specular=1., log_scale=True)
             # TP, just to have a stable scale.
+            #clim = [1e-10, 1]
+            clim = [1e-10, 3e-9]
+            log_scale = True
             self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet",
-                                                      clim=[1e-10, 3e-9], show_edges=False,
-                                                      specular=1., log_scale=True)
+                                                      clim=clim, show_edges=False,
+                                                      specular=1., log_scale=log_scale)
             # TODO : Temporary, just because the meteo file begins at PAR peak
             self.plot_text = self.plotter.add_text(
                 f" day {int((self.simulation_time_in_hours + 12) / 24)} : {(self.simulation_time_in_hours + 12) % 24} h",
