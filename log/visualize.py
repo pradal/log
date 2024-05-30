@@ -583,9 +583,8 @@ def soil_voxels_mesh(g, voxels, cmap_property):
                 -voxels["z2"][vy][vz][vx]
             ))
             voxel[cmap_property] = [voxels[cmap_property][vy][vz][vx]]*6
-            # Only to filter which voxels to show
-            if voxels[cmap_property][vy][vz][vx] > 0.1:
-                voxel_mesh_list += [voxel]
+
+            voxel_mesh_list += [voxel]
 
     soil_grid = pv.MultiBlock(voxel_mesh_list)
     return soil_grid

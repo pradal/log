@@ -40,7 +40,7 @@ class Logger:
                     on_performance=True,
                     animate_raw_logs=False)
     
-    medium_log_focus_properties = dict(recording_images=False, recording_off_screen=True, plotted_property="nitrate_transporters_affinity_factor", flow_property=False, show_soil=True,
+    medium_log_focus_properties = dict(recording_images=False, recording_off_screen=True, plotted_property="nitrate_transporters_affinity_factor", flow_property=False, show_soil=False,
                     recording_mtg=False,
                     recording_raw=True,
                     recording_sums=True,
@@ -50,7 +50,7 @@ class Logger:
                     on_performance=True,
                     animate_raw_logs=True)
     
-    heavy_log = dict(recording_images=True, recording_off_screen=True, plotted_property="import_Nm", flow_property=True, show_soil=True,
+    heavy_log = dict(recording_images=True, recording_off_screen=False, plotted_property="import_Nm", flow_property=True, show_soil=False,
                     recording_mtg=False,
                     recording_raw=True,
                     recording_sums=True,
@@ -199,9 +199,15 @@ class Logger:
 
         self.plotter = pv.Plotter(off_screen=not self.echo, window_size=sizes["portrait"], lighting="three lights")
         self.plotter.set_background("brown")
-        self.plotter.camera_position = [(0.40610826249000453, 0.05998559870235731, 0.23104458533393235),
-                                        (-0.018207483487647478, -0.01240015490351695, -0.11434395584056384),
-                                        (-0.6256947390605705, -0.04745865688095235, 0.7786229956782554)]
+
+        step_back_coefficient = 0.5
+        camera_coordinates = (step_back_coefficient, 0., 0.)
+        move_up_coefficient = 0.1
+        horizontal_aiming = (0., 0., 1.)
+        collar_position = (0., 0., -move_up_coefficient)
+        self.plotter.camera_position = [camera_coordinates,
+                                        collar_position,
+                                        horizontal_aiming]
 
         framerate = 10
         self.plotter.open_movie(os.path.join(self.root_images_dirpath, "root_movie.mp4"), framerate)
@@ -437,7 +443,7 @@ class Logger:
             #                                           specular=1., log_scale=True)
             # TP, just to have a stable scale.
             self.current_mesh = self.plotter.add_mesh(root_system_mesh, cmap="jet",
-                                                      clim=[1e-10, 6e-9], show_edges=False,
+                                                      clim=[1e-10, 3e-9], show_edges=False,
                                                       specular=1., log_scale=True)
             # TODO : Temporary, just because the meteo file begins at PAR peak
             self.plot_text = self.plotter.add_text(
