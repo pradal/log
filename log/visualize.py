@@ -515,6 +515,7 @@ def plot_mtg_alt(g, cmap_property, flow_property=True, root_hairs=False):
     plotted_vids = []
     tubes = []
     root_hairs_tubes = []
+    root_hairs_opacity = []
     for vid in pre_order(g, root):
         if vid not in plotted_vids:
             root = g.Axis(vid)
@@ -532,12 +533,6 @@ def plot_mtg_alt(g, cmap_property, flow_property=True, root_hairs=False):
                 root_hairs_line = line
                 root_hairs_line["living_root_hairs_struct_mass"] = [props["living_root_hairs_struct_mass"][v] for v in root]
                 root_hairs_line["radius"] = [props["radius"][v] + props["root_hair_length"][v] for v in root]
-                root_hairs_opacity = []
-                for v in root:
-                    if props["length"][v] > 0:
-                        root_hairs_opacity += [props["total_root_hairs_number"][v] / props["length"][v]]
-                    else:
-                        root_hairs_opacity += [0]
                 root_hairs_tubes += [root_hairs_line.tube(scalars="radius", absolute=True)]
             
             if flow_property:
@@ -559,7 +554,7 @@ def plot_mtg_alt(g, cmap_property, flow_property=True, root_hairs=False):
 
     if root_hairs:
         root_hairs_system = pv.MultiBlock(root_hairs_tubes)
-        return root_system, root_hairs_system, root_hairs_opacity
+        return root_system, color_property, root_hairs_system
     
     else:
         return root_system, color_property

@@ -20,11 +20,12 @@ from log.visualize import plot_mtg, plot_mtg_alt, soil_voxels_mesh, shoot_plantg
 
 class Logger:
 
-    light_log = dict(recording_images=False, recording_off_screen=True, plotted_property="import_Nm", show_soil=True,
+    light_log = dict(recording_images=False, recording_off_screen=False, plotted_property="import_Nm", show_soil=True,
                     recording_mtg=False,
                     recording_raw=False,
+                    final_snapshots=False,
                     recording_sums=True,
-                    recording_performance=False,
+                    recording_performance=True,
                     recording_barcodes=False, compare_to_ref_barcode=False,
                     on_sums=False,
                     on_performance=False,
@@ -34,6 +35,7 @@ class Logger:
                     recording_mtg=False,
                     recording_raw=False,
                     recording_sums=True,
+                    final_snapshots=False,
                     recording_performance=True,
                     recording_barcodes=False, compare_to_ref_barcode=False,
                     on_sums=True,
@@ -43,6 +45,7 @@ class Logger:
     medium_log_focus_properties = dict(recording_images=False, recording_off_screen=True, plotted_property="nitrate_transporters_affinity_factor", flow_property=False, show_soil=False,
                     recording_mtg=False,
                     recording_raw=True,
+                    final_snapshots=True,
                     recording_sums=True,
                     recording_performance=True,
                     recording_barcodes=False, compare_to_ref_barcode=False,
@@ -51,8 +54,9 @@ class Logger:
                     animate_raw_logs=True)
     
     heavy_log = dict(recording_images=True, recording_off_screen=False, plotted_property="import_Nm", flow_property=True, show_soil=False,
-                    recording_mtg=False,
+                    recording_mtg=True,
                     recording_raw=True,
+                    final_snapshots=False,
                     recording_sums=True,
                     recording_performance=True,
                     recording_barcodes=True, compare_to_ref_barcode=False, 
@@ -66,6 +70,7 @@ class Logger:
                  recording_sums=False, recording_raw=False, recording_mtg=False, recording_images=False, recording_off_screen=False,
                  recording_performance=False,
                  recording_shoot=False,
+                 final_snapshots=False,
                  plotted_property="hexose_exudation", flow_property=False, show_soil=False,
                  recording_barcodes=False, compare_to_ref_barcode=False, barcodes_path="inputs/persistent_barcodes.pckl",
                  echo=True, **kwargs):
@@ -110,6 +115,7 @@ class Logger:
             recording_images = False
         self.recording_images = recording_images
         self.recording_off_screen = recording_off_screen
+        self.final_snapshots = final_snapshots
         self.show_soil = show_soil
         self.plotted_property = plotted_property
         self.flow_property = flow_property
@@ -154,7 +160,7 @@ class Logger:
                 available_inputs = [i for i in model.inputs if
                                     i in self.props.keys()]  # To prevent getting inputs that are not provided neither from another model nor mtg
                 self.output_variables.update(
-                    {f.name: f.metadata for f in fields(model) if f.name in model.state_variables + available_inputs})
+                    {f.name: f.metadata for f in fields(model) if f.name in model.state_variables + available_inputs + ["struct_mass"]})
                 self.units_for_outputs.update({f.name: f.metadata["unit"] for f in fields(model) if
                                                f.name in self.summable_output_variables + self.meanable_output_variables + self.plant_scale_state})
 
@@ -458,14 +464,6 @@ class Logger:
                 self.plotter.remove_actor(self.soil_grid_in_scene)
                 self.soil_grid_in_scene = self.plotter.add_mesh(soil_grid, cmap="hot", show_edges=False, specular=1.,
                                                                 opacity=0.1)
-            # Usefull to set new camera angle
-            #print(self.plotter.camera_position)
-
-            #pgl.Viewer.display()
-            # If needed, we wait for a few seconds so that the graph is well positioned:
-            #time.sleep(0.1)
-            #image_name = os.path.join(self.root_images_dirpath, f'root_{self.simulation_time_in_hours}.png')
-            #pgl.Viewer.saveSnapshot(image_name)
 
         if "shoot" in self.data_structures.keys():
             shoot_meshes = shoot_plantgl_to_mesh(self.data_structures["shoot"])
@@ -630,13 +628,13 @@ class Logger:
             self.plant_scale_properties.to_csv(
                 os.path.join(self.MTG_properties_summed_dirpath, "plant_scale_properties.csv"))
 
-        if not self.recording_images:
+        if not self.recording_images and self.final_snapshots:
             print("[INFO] Saving a final snapshot...")
             self.log_mtg_coordinates()
             self.init_images_plotter()
             self.recording_images_with_pyvista()
 
-        if not self.recording_mtg:
+        if not self.recording_mtg and self.final_snapshots:
             print("[INFO] Saving the final state of the MTG...")
             self.recording_mtg_files()
 
