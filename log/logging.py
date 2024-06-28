@@ -11,7 +11,11 @@ import pyvista as pv
 import matplotlib.pyplot as plt
 import inspect
 import logging
-from gudhi import bottleneck_distance
+try:
+    import gudhi
+    from gudhi import bottleneck_distance
+except ImportError:
+    gudhi = None
 
 from openalea.mtg.traversal import pre_order, post_order
 from openalea.mtg import turtle as turt
@@ -618,7 +622,7 @@ class Logger:
             print("[INFO] Now proceeding to data writing on disk...")
 
         if self.recording_sums:
-            if self.compare_to_ref_barcode:
+            if self.compare_to_ref_barcode and gudhi:
                 barcodes_distances = {t: bottleneck_distance(self.ref_persitent_barcodes[t], barcode, 0) for t, barcode in self.persistent_barcodes.items()}
                 print(barcodes_distances)
                 self.plant_scale_properties["bottleneck_distances"] = pd.Series(barcodes_distances)
